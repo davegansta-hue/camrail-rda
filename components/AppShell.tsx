@@ -1,20 +1,37 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { clearSession, getSession } from "@/lib/auth";
 
 export default function AppShell({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [session, setSession] = useState<ReturnType<typeof getSession>>(null);
+
+  useEffect(() => {
+    setSession(getSession());
+  }, []);
+
+  function handleLogout() {
+    clearSession();
+    setSession(null);
+    router.push("/login");
+  }
+
+  const email = session?.email || "Agent CAMRAIL";
+  const role = session?.role || "Non connecté";
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white">
+    <div className="min-h-screen bg-slate-50">
+      <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-
           {/* Logo */}
           <Link
             href="/"
@@ -55,20 +72,30 @@ export default function AppShell({
 
           {/* User + mobile button */}
           <div className="flex items-center gap-3">
-
             <div className="hidden text-right sm:block">
-              <p className="text-xs font-semibold text-slate-700">
-                Agent CAMRAIL
+              <p className="max-w-[180px] truncate text-xs font-semibold text-slate-700">
+                {email}
               </p>
 
               <p className="text-[10px] text-slate-400">
-                Démonstration
+                {role}
               </p>
             </div>
 
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-xs font-bold text-red-600">
-              AC
+              {email.charAt(0).toUpperCase()}
             </div>
+
+            {/* Logout */}
+            {session && (
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="hidden rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 sm:block"
+              >
+                Déconnexion
+              </button>
+            )}
 
             {/* Mobile menu button */}
             <button
@@ -101,6 +128,16 @@ export default function AppShell({
               >
                 Documents
               </Link>
+
+              {session && (
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="mt-1 rounded-xl px-4 py-3 text-left text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                >
+                  Déconnexion
+                </button>
+              )}
             </nav>
           </div>
         )}
