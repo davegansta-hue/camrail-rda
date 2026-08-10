@@ -1,3 +1,8 @@
+:root {
+  --camrail-red: #d71920;
+  --camrail-red-dark: #b51218;
+  --camrail-red-light: #fff1f2;
+}
 @import "tailwindcss";
 
 :root {
