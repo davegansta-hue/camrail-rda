@@ -1,4 +1,15 @@
-import { clearSession, getSession } from "./auth";
+import { clearSession, getSession, getAccessToken, refreshAccessToken } from "./auth";
+
+export class ApiError extends Error {
+  status: number;
+  body: any;
+
+  constructor(message: string, status = 0, body: any = null) {
+    super(message);
+    this.status = status;
+    this.body = body;
+  }
+}
 
 export async function apiFetch(
   path: string,
@@ -10,8 +21,10 @@ export async function apiFetch(
 
   headers.set("Content-Type", "application/json");
 
-  if (session?.token) {
-    headers.set("Authorization", `Bearer ${session.token}`);
+  const accessToken = getAccessToken() || session?.token;
+
+  if (accessToken) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
   }
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
@@ -26,21 +39,43 @@ export async function apiFetch(
   });
 
   if (response.status === 401) {
+    // Try a single refresh attempt using refresh token cookie
+    const refreshed = await refreshAccessToken().catch(() => null);
+
+    if (refreshed) {
+      // retry original request once with new token
+      const retryHeaders = new Headers(options.headers);
+      retryHeaders.set("Content-Type", "application/json");
+
+      const newToken = getAccessToken() || getSession()?.token;
+      if (newToken) retryHeaders.set("Authorization", `Bearer ${newToken}`);
+
+      const retryResp = await fetch(`${apiUrl}${path}`, {
+        ...options,
+        headers: retryHeaders,
+      });
+
+      if (retryResp.ok) return retryResp.json();
+
+      // fallthrough to error handling
+    }
+
     clearSession();
 
     if (typeof window !== "undefined") {
       window.location.href = "/login";
     }
 
-    throw new Error("Session expirée, veuillez vous reconnecter.");
+    throw new ApiError("Session expirée, veuillez vous reconnecter.", 401, null);
   }
 
   if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
+    const errorBody = await response.json().catch(() => null);
 
-    throw new Error(
-      errorBody.detail || "Erreur lors de l'appel à l'API.",
-    );
+    const message = (errorBody && (errorBody.detail || errorBody.message)) ||
+      `HTTP ${response.status}`;
+
+    throw new ApiError(message, response.status, errorBody);
   }
 
   return response.json();

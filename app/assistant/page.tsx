@@ -2,21 +2,19 @@
 
 import { useState } from "react";
 import type { FormEvent } from "react";
+import Link from "next/link";
 import AuthGuard from "@/components/AuthGuard";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, ApiError } from "@/lib/api";
+import type { BackendCitation, AssistantResponse } from "@/lib/backend-types";
 
-type Citation = {
-  document_title: string;
-  page_start: number;
-  page_end: number;
-  excerpt: string;
-};
+type Citation = BackendCitation;
 
 type Message = {
   role: "user" | "assistant";
   content: string;
   confidence?: "high" | "medium" | "insufficient";
   citations?: Citation[];
+  abstention?: boolean;
 };
 
 const confidenceConfig = {
@@ -70,37 +68,78 @@ export default function AssistantPage() {
     setLoading(true);
 
     try {
-      const data = await apiFetch("/assistant/query", {
+      const data = (await apiFetch("/assistant/query", {
         method: "POST",
-        body: JSON.stringify({
-          query: trimmedQuestion,
-        }),
-      });
+        body: JSON.stringify({ query: trimmedQuestion }),
+      })) as AssistantResponse;
 
-      setMessages((current) => [
-        ...current,
-        {
-          role: "assistant",
-          content: data.answer,
-          confidence: data.confidence,
-          citations: data.citations ?? [],
-        },
-      ]);
+      // If backend indicates low confidence, render an abstention card
+      if (data.confidence === "insufficient") {
+        setMessages((current) => [
+          ...current,
+          {
+            role: "assistant",
+            content: data.answer,
+            confidence: data.confidence,
+            citations: data.citations ?? [],
+            abstention: true,
+          },
+        ]);
+      } else {
+        setMessages((current) => [
+          ...current,
+          {
+            role: "assistant",
+            content: data.answer,
+            confidence: data.confidence,
+            citations: data.citations ?? [],
+          },
+        ]);
+      }
     } catch (error) {
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "Une erreur est survenue lors de la recherche documentaire.";
+      // Do not render HTTP errors as assistant messages; show a UI-level error banner instead.
+      if (error instanceof ApiError) {
+        const status = error.status;
+        const msg = error.body?.detail || error.message || "Erreur serveur";
 
-      setMessages((current) => [
-        ...current,
-        {
-          role: "assistant",
-          content: errorMessage,
-          confidence: "insufficient",
-          citations: [],
-        },
-      ]);
+        // Append a distinct assistant message only if it's not an HTTP error indicating server/auth issues.
+        if (status >= 400 && status < 500) {
+          setMessages((current) => [
+            ...current,
+            {
+              role: "assistant",
+              content: `Impossible d'effectuer la recherche : ${msg}`,
+              confidence: "insufficient",
+              citations: [],
+            },
+          ]);
+        } else {
+          setMessages((current) => [
+            ...current,
+            {
+              role: "assistant",
+              content: "Erreur système lors de la recherche documentaire. Réessayez plus tard.",
+              confidence: "insufficient",
+              citations: [],
+            },
+          ]);
+        }
+      } else {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "Une erreur est survenue lors de la recherche documentaire.";
+
+        setMessages((current) => [
+          ...current,
+          {
+            role: "assistant",
+            content: errorMessage,
+            confidence: "insufficient",
+            citations: [],
+          },
+        ]);
+      }
     } finally {
       setLoading(false);
     }
@@ -156,6 +195,8 @@ export default function AssistantPage() {
                     className={
                       message.role === "user"
                         ? "rounded-2xl rounded-tr-md bg-red-600 p-4 text-white sm:p-5"
+                        : message.abstention
+                        ? "rounded-2xl rounded-tl-md bg-yellow-50 border border-yellow-200 p-4 sm:p-5"
                         : "rounded-2xl rounded-tl-md bg-slate-50 p-4 sm:p-5"
                     }
                   >
@@ -163,6 +204,8 @@ export default function AssistantPage() {
                       className={
                         message.role === "user"
                           ? "text-sm leading-7 text-white"
+                          : message.abstention
+                          ? "text-sm leading-7 text-slate-800"
                           : "text-sm leading-7 text-slate-700"
                       }
                     >
@@ -170,7 +213,7 @@ export default function AssistantPage() {
                     </p>
 
                     {/* Confidence */}
-                    {message.confidence && (
+                    {message.confidence && !message.abstention && (
                       <div className="mt-4">
                         <span
                           className={
@@ -179,6 +222,13 @@ export default function AssistantPage() {
                         >
                           Confiance{" "}
                           {confidenceConfig[message.confidence].label}
+                        </span>
+                      </div>
+                    )}
+                    {message.abstention && (
+                      <div className="mt-4">
+                        <span className="inline-flex rounded-full bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-800">
+                          Abstention — Aucune réponse sûre disponible
                         </span>
                       </div>
                     )}
@@ -196,27 +246,54 @@ export default function AssistantPage() {
 
                         <div className="space-y-3">
                           {message.citations.map(
-                            (citation, citationIndex) => (
-                              <div
-                                key={citationIndex}
-                                className="rounded-xl border border-slate-200 bg-white p-4"
-                              >
-                                <p className="text-sm font-semibold text-slate-800">
-                                  {citation.document_title}
-                                </p>
+                            (citation, citationIndex) => {
+                              // Deep link to document page with anchor
+                              const docHref = citation.document_id
+                                ? `/documents/${citation.document_id}#page-${citation.page_start}`
+                                : undefined;
 
-                                <p className="mt-1 text-xs text-slate-500">
-                                  {citation.page_start ===
-                                  citation.page_end
-                                    ? `Page ${citation.page_start}`
-                                    : `Pages ${citation.page_start}-${citation.page_end}`}
-                                </p>
+                              return (
+                                <Link
+                                  key={citationIndex}
+                                  href={docHref || "#"}
+                                  className={`block rounded-xl border border-slate-200 bg-white p-4 transition ${
+                                    docHref
+                                      ? "cursor-pointer hover:border-red-300 hover:bg-red-50"
+                                      : "cursor-default"
+                                  }`}
+                                >
+                                  <p className="text-sm font-semibold text-slate-800">
+                                    {citation.document_title}
+                                  </p>
 
-                                <p className="mt-3 text-xs leading-5 text-slate-500">
-                                  « {citation.excerpt} »
-                                </p>
-                              </div>
-                            ),
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    {citation.document_version && (
+                                      <span className="mr-2">v{citation.document_version}</span>
+                                    )}
+
+                                    {citation.page_start === citation.page_end
+                                      ? `Page ${citation.page_start}`
+                                      : `Pages ${citation.page_start}-${citation.page_end}`}
+                                  </p>
+
+                                  {citation.section && (
+                                    <p className="mt-1 text-xs text-slate-600 font-medium">
+                                      📍 {citation.section}
+                                    </p>
+                                  )}
+
+                                  <p className="mt-3 text-xs leading-5 text-slate-500">
+                                    « {citation.excerpt} »
+                                  </p>
+
+                                  {docHref && (
+                                    <p className="mt-2 text-xs text-red-600 font-semibold">
+                                      Voir le document →
+                                    </p>
+                                  )}
+                                </Link>
+                              );
+                            },
                           )}
                         </div>
                       </div>

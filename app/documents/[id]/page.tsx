@@ -36,6 +36,7 @@ export default function DocumentViewerPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [linkedPageNumber, setLinkedPageNumber] = useState<number | null>(null);
 
   useEffect(() => {
     async function loadDocument() {
@@ -48,6 +49,15 @@ export default function DocumentViewerPage() {
         );
 
         setDocument(data as DocumentDetail);
+
+        // Extract page number from URL hash (e.g., #page-5)
+        if (typeof window !== "undefined") {
+          const hash = window.location.hash;
+          const pageMatch = hash.match(/page-(\d+)/);
+          if (pageMatch) {
+            setLinkedPageNumber(parseInt(pageMatch[1], 10));
+          }
+        }
       } catch (error) {
         setError(
           error instanceof Error
@@ -160,47 +170,62 @@ export default function DocumentViewerPage() {
               {/* Document */}
               <section className="rounded-2xl border border-slate-200 bg-slate-100 p-3 sm:p-5 lg:p-8">
                 <div className="mx-auto max-w-3xl space-y-5">
-                  {document.pages.map((page) => (
-                    <article
-                      key={page.id}
-                      id={`page-${page.page_number}`}
-                      className="scroll-mt-6 bg-white p-6 shadow-sm sm:p-10"
-                    >
-                      <div className="mb-8 flex items-center justify-between border-b border-slate-100 pb-4">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                          {document.title}
-                        </span>
+                  {document.pages.map((page) => {
+                    const isLinkedPage = page.page_number === linkedPageNumber;
 
-                        <span className="text-xs text-slate-400">
+                    return (
+                      <article
+                        key={page.id}
+                        id={`page-${page.page_number}`}
+                        className={`scroll-mt-6 bg-white p-6 shadow-sm sm:p-10 transition ${
+                          isLinkedPage
+                            ? "border-2 border-amber-300 bg-amber-50"
+                            : ""
+                        }`}
+                      >
+                        {isLinkedPage && (
+                          <div className="mb-4 inline-flex items-center gap-2 rounded-lg bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800">
+                            <span>🔗</span>
+                            Citation source
+                          </div>
+                        )}
+
+                        <div className="mb-8 flex items-center justify-between border-b border-slate-100 pb-4">
+                          <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                            {document.title}
+                          </span>
+
+                          <span className="text-xs text-slate-400">
+                            Page {page.page_number}
+                          </span>
+                        </div>
+
+                        <h2 className="text-xl font-bold text-slate-900">
                           Page {page.page_number}
-                        </span>
-                      </div>
+                        </h2>
 
-                      <h2 className="text-xl font-bold text-slate-900">
-                        Page {page.page_number}
-                      </h2>
-
-                      <p className="mt-5 whitespace-pre-line text-sm leading-8 text-slate-700">
-                        {page.extracted_text}
-                      </p>
-
-                      <div className="mt-6 rounded-xl border border-slate-100 bg-slate-50 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                          Méthode d’extraction
+                        <p className="mt-5 whitespace-pre-line text-sm leading-8 text-slate-700">
+                          {page.extracted_text}
                         </p>
 
-                        <p className="mt-1 text-xs text-slate-500">
-                          {page.extraction_method}
-                        </p>
-                      </div>
+                        <div className="mt-6 rounded-xl border border-slate-100 bg-slate-50 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                            Méthode d'extraction
+                          </p>
 
-                      <div className="mt-10 border-t border-slate-100 pt-4 text-right">
-                        <span className="text-xs text-slate-400">
-                          {document.title} · v{document.version}
-                        </span>
-                      </div>
-                    </article>
-                  ))}
+                          <p className="mt-1 text-xs text-slate-500">
+                            {page.extraction_method}
+                          </p>
+                        </div>
+
+                        <div className="mt-10 border-t border-slate-100 pt-4 text-right">
+                          <span className="text-xs text-slate-400">
+                            {document.title} · v{document.version}
+                          </span>
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
               </section>
             </div>

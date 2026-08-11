@@ -1,27 +1,11 @@
 
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import AuthGuard from "@/components/AuthGuard";
 import { apiFetch } from "@/lib/api";
-
-type DocumentStatus =
-  | "processing"
-  | "indexed"
-  | "active"
-  | "failed";
-
-interface DocumentItem {
-  id: string;
-  title: string;
-  category: string;
-  department: string;
-  version: string;
-  status: DocumentStatus;
-  checksum: string;
-  uploaded_by: string;
-  created_at: string;
-}
+import type { DocumentItem } from "@/lib/backend-types";
 
 const statusConfig: Record<
   DocumentStatus,
@@ -251,14 +235,15 @@ export default function DocumentsPage() {
                       >
                         <td className="px-6 py-5">
                           <div>
-                            <p className="text-sm font-semibold text-slate-800">
-                              {document.title}
-                            </p>
+                                        <p className="text-sm font-semibold text-slate-800">
+                                          <Link href={`/documents/${document.id}`} className="underline">
+                                            {document.title}
+                                          </Link>
+                                        </p>
 
-                            <p className="mt-1 text-xs text-slate-400">
-                              Créé le{" "}
-                              {formatDate(document.created_at)}
-                            </p>
+                                        <p className="mt-1 text-xs text-slate-400">
+                                          Créé le {formatDate(document.created_at)}
+                                        </p>
                           </div>
                         </td>
 

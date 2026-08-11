@@ -1,30 +1,44 @@
 export type AuthSession = {
-  token: string;
+  token?: string;
   role: string;
   email: string;
 };
 
 const SESSION_KEY = "camrail_session";
+// NOTE: Storing JWTs in JavaScript-accessible storage (localStorage) is
+// vulnerable to XSS. Prefer httpOnly secure cookies set by the backend.
+// As an intermediate mitigation we use `sessionStorage` (lifetime tied to
+// the browser tab) instead of `localStorage` to reduce persistence.
+// NOTE: Storing JWTs in JavaScript-accessible storage is vulnerable to XSS.
+// Prefer httpOnly secure cookies set by the backend. Here we keep the access
+// token only in memory and persist only non-sensitive session info to
+// `sessionStorage` (tab-lifetime). The app will attempt a refresh via
+// `/auth/refresh` when needed.
+let inMemoryToken: string | null = null;
+
+function storageAvailable(): boolean {
+  return typeof window !== "undefined" && !!window.sessionStorage;
+}
 
 export function saveSession(session: AuthSession): void {
-  if (typeof window === "undefined") {
-    return;
-  }
+  if (!storageAvailable()) return;
 
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  try {
+    const toStore = { ...session } as any;
+    delete toStore.token; // never persist token
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(toStore));
+  } catch {
+    // best-effort: swallow storage errors
+  }
 }
 
 export function getSession(): AuthSession | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
+  if (!storageAvailable()) return null;
 
   try {
-    const storedSession = localStorage.getItem(SESSION_KEY);
+    const storedSession = sessionStorage.getItem(SESSION_KEY);
 
-    if (!storedSession) {
-      return null;
-    }
+    if (!storedSession) return null;
 
     return JSON.parse(storedSession) as AuthSession;
   } catch {
@@ -33,11 +47,59 @@ export function getSession(): AuthSession | null {
 }
 
 export function clearSession(): void {
-  if (typeof window === "undefined") {
-    return;
-  }
+  inMemoryToken = null;
 
-  localStorage.removeItem(SESSION_KEY);
+  if (!storageAvailable()) return;
+
+  try {
+    sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+export function setAccessToken(token: string | null) {
+  inMemoryToken = token;
+}
+
+export function getAccessToken(): string | null {
+  return inMemoryToken;
+}
+
+export async function refreshAccessToken(): Promise<AuthSession | null> {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+
+  if (!apiUrl) return null;
+
+  try {
+    const resp = await fetch(`${apiUrl}/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!resp.ok) return null;
+
+    const data = await resp.json();
+
+    if (data.access_token) {
+      setAccessToken(data.access_token);
+    }
+
+    const session: AuthSession = {
+      token: undefined,
+      role: data.role || "",
+      email: data.email || "",
+    };
+
+    saveSession(session);
+
+    return session;
+  } catch {
+    return null;
+  }
 }
 
 export async function login(
