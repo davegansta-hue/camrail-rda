@@ -37,35 +37,44 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-[calc(100vh-64px)] items-center justify-center bg-slate-50 px-4 py-10">
+    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10">
       <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="mb-8 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-600 text-xl font-bold text-white shadow-sm">
-            C
-          </div>
+        {/* Logo & Header */}
+        <div className="mb-10 text-center">
+          <img 
+            src="/camrail-logo.png" 
+            alt="CAMRAIL Logo" 
+            className="mx-auto h-16 w-auto object-contain mb-6"
+          />
 
-          <h1 className="mt-5 text-2xl font-bold tracking-tight text-slate-950">
-            CAMRAIL AI
+          <p className="text-xs font-bold uppercase tracking-widest text-camrail-red mb-2">
+            CAMRAIL
+          </p>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+            RailMind
           </h1>
-
-          <p className="mt-2 text-sm text-slate-500">
-            Connectez-vous à votre espace documentaire.
+          <p className="mt-3 text-sm text-slate-500 font-medium">
+            Assistant documentaire
           </p>
         </div>
 
         {/* Login card */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-          <h2 className="text-lg font-bold text-slate-950">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/40 sm:p-8 relative overflow-hidden">
+          {/* Subtle top border accent */}
+          <div className="absolute top-0 left-0 w-full h-1 bg-camrail-red"></div>
+
+          <h2 className="text-xl font-bold text-slate-900">
             Connexion
           </h2>
-
           <p className="mt-1 text-sm text-slate-500">
-            Utilisez vos identifiants CAMRAIL.
+            Utilisez vos identifiants d'entreprise CAMRAIL.
           </p>
 
           {error && (
-            <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+            <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 flex items-start gap-3">
+              <svg className="w-5 h-5 text-red-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
               <p className="text-sm font-medium text-red-700">
                 {error}
               </p>
@@ -79,7 +88,7 @@ export default function LoginPage() {
                 htmlFor="username"
                 className="mb-2 block text-sm font-semibold text-slate-700"
               >
-                Email
+                Adresse email
               </label>
 
               <input
@@ -87,11 +96,11 @@ export default function LoginPage() {
                 type="email"
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
-                placeholder="votre@email.com"
+                placeholder="prenom.nom@camrail.net"
                 autoComplete="email"
                 required
                 disabled={loading}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-red-500 focus:bg-white focus:ring-2 focus:ring-red-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-camrail-red focus:ring-1 focus:ring-camrail-red disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60"
               />
             </div>
 
@@ -109,11 +118,11 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                placeholder="Votre mot de passe"
+                placeholder="••••••••"
                 autoComplete="current-password"
                 required
                 disabled={loading}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-red-500 focus:bg-white focus:ring-2 focus:ring-red-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-camrail-red focus:ring-1 focus:ring-camrail-red disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60"
               />
             </div>
 
@@ -121,16 +130,17 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading || !username.trim() || !password}
-              className="w-full rounded-xl bg-red-600 px-5 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              className="w-full mt-2 rounded-xl bg-camrail-red px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-camrail-red-dark disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
             >
-              {loading ? "Connexion..." : "Se connecter"}
+              {loading ? "Vérification en cours..." : "Accéder à l'Assistant"}
             </button>
           </form>
         </div>
 
-        <p className="mt-6 text-center text-xs text-slate-400">
-          CAMRAIL AI · Recherche documentaire
-        </p>
+        <div className="mt-8 text-center text-xs text-slate-400 flex flex-col gap-1">
+          <p>© {new Date().getFullYear()} CAMRAIL</p>
+          <p>Propulsé par la technologie d'Intelligence Artificielle</p>
+        </div>
       </div>
     </main>
   );

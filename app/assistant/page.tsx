@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import type { FormEvent } from "react";
+import { useState, useRef, useEffect } from "react";
+import type { FormEvent, KeyboardEvent } from "react";
 import Link from "next/link";
 import AuthGuard from "@/components/AuthGuard";
 import { apiFetch, ApiError } from "@/lib/api";
 import type { BackendCitation, AssistantResponse } from "@/lib/backend-types";
+import ReactMarkdown from "react-markdown";
 
 type Citation = BackendCitation;
 
@@ -19,51 +20,47 @@ type Message = {
 
 const confidenceConfig = {
   high: {
-    label: "élevée",
-    className:
-      "inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700",
+    label: "Confiance élevée",
+    className: "bg-emerald-100 text-emerald-800 border-emerald-200",
   },
   medium: {
-    label: "moyenne",
-    className:
-      "inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700",
+    label: "Confiance moyenne",
+    className: "bg-amber-100 text-amber-800 border-amber-200",
   },
   insufficient: {
-    label: "insuffisante",
-    className:
-      "inline-flex rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700",
+    label: "Information insuffisante",
+    className: "bg-red-100 text-red-800 border-red-200",
   },
 };
 
 export default function AssistantPage() {
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content:
-        "Bonjour. Je suis l’assistant documentaire CAMRAIL. Posez-moi une question sur les documents disponibles.",
-    },
-  ]);
+  // Auto-scroll to bottom
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, loading]);
 
+  // Focus input on load
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  async function handleSubmit(e?: FormEvent<HTMLFormElement>) {
+    e?.preventDefault();
     const trimmedQuestion = question.trim();
 
-    if (!trimmedQuestion || loading) {
-      return;
-    }
+    if (!trimmedQuestion || loading) return;
 
-    setMessages((current) => [
-      ...current,
-      {
-        role: "user",
-        content: trimmedQuestion,
-      },
-    ]);
-
+    setMessages((current) => [...current, { role: "user", content: trimmedQuestion }]);
     setQuestion("");
     setLoading(true);
 
@@ -73,15 +70,25 @@ export default function AssistantPage() {
         body: JSON.stringify({ query: trimmedQuestion }),
       })) as AssistantResponse;
 
-      // If backend indicates low confidence, render an abstention card
-      if (data.confidence === "insufficient") {
+      setMessages((current) => [
+        ...current,
+        {
+          role: "assistant",
+          content: data.answer,
+          confidence: data.confidence,
+          citations: data.citations ?? [],
+          abstention: data.confidence === "insufficient",
+        },
+      ]);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        const msg = error.body?.detail || error.message || "Erreur serveur";
         setMessages((current) => [
           ...current,
           {
             role: "assistant",
-            content: data.answer,
-            confidence: data.confidence,
-            citations: data.citations ?? [],
+            content: `Impossible d'effectuer la recherche : ${msg}`,
+            confidence: "insufficient",
             abstention: true,
           },
         ]);
@@ -90,261 +97,183 @@ export default function AssistantPage() {
           ...current,
           {
             role: "assistant",
-            content: data.answer,
-            confidence: data.confidence,
-            citations: data.citations ?? [],
-          },
-        ]);
-      }
-    } catch (error) {
-      // Do not render HTTP errors as assistant messages; show a UI-level error banner instead.
-      if (error instanceof ApiError) {
-        const status = error.status;
-        const msg = error.body?.detail || error.message || "Erreur serveur";
-
-        // Append a distinct assistant message only if it's not an HTTP error indicating server/auth issues.
-        if (status >= 400 && status < 500) {
-          setMessages((current) => [
-            ...current,
-            {
-              role: "assistant",
-              content: `Impossible d'effectuer la recherche : ${msg}`,
-              confidence: "insufficient",
-              citations: [],
-            },
-          ]);
-        } else {
-          setMessages((current) => [
-            ...current,
-            {
-              role: "assistant",
-              content: "Erreur système lors de la recherche documentaire. Réessayez plus tard.",
-              confidence: "insufficient",
-              citations: [],
-            },
-          ]);
-        }
-      } else {
-        const errorMessage =
-          error instanceof Error
-            ? error.message
-            : "Une erreur est survenue lors de la recherche documentaire.";
-
-        setMessages((current) => [
-          ...current,
-          {
-            role: "assistant",
-            content: errorMessage,
+            content: "Une erreur est survenue lors de la recherche documentaire.",
             confidence: "insufficient",
-            citations: [],
+            abstention: true,
           },
         ]);
       }
     } finally {
       setLoading(false);
+      // Give focus back to input
+      setTimeout(() => inputRef.current?.focus(), 10);
     }
   }
 
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  };
+
   return (
     <AuthGuard>
-      <div className="flex min-h-[calc(100vh-140px)] flex-col">
-        {/* Header */}
-        <div className="mb-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-600 text-sm font-bold text-white">
-              C
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-red-600">
-                CAMRAIL AI
+      <div className="flex flex-col h-[calc(100vh-64px)] relative">
+        {/* Messages Area */}
+        <div className="flex-1 overflow-y-auto pb-32">
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full px-4 text-center mt-10 md:mt-20">
+              <img src="/camrail-logo.png" alt="CAMRAIL Logo" className="h-12 w-auto object-contain mb-6" />
+              <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-2">RailMind</h2>
+              <p className="text-slate-500 mb-6 text-sm md:text-base font-medium">Votre assistant documentaire CAMRAIL</p>
+              
+              <p className="text-sm text-slate-600 mb-8 max-w-md">
+                Posez une question sur les documents techniques, les procédures ou les règles disponibles.
               </p>
-
-              <h1 className="text-2xl font-bold text-slate-950 sm:text-3xl">
-                Assistant documentaire
-              </h1>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Posez une question sur la documentation de l’entreprise.
-              </p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl w-full">
+                {[
+                  "Quelle est la procédure pour la maintenance préventive ?",
+                  "Quelles sont les règles de sécurité en atelier ?",
+                  "Comment fonctionne le freinage sur les locomotives ?",
+                  "Quels sont les EPI obligatoires ?"
+                ].map((suggestion, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      setQuestion(suggestion);
+                      setTimeout(() => inputRef.current?.focus(), 10);
+                    }}
+                    className="p-4 border border-slate-200 rounded-xl text-left hover:border-camrail-red hover:shadow-md transition-all text-sm text-slate-600 bg-white"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="max-w-4xl mx-auto w-full px-4 pt-6 pb-6 space-y-6">
+              {messages.map((message, index) => (
+                <div key={index} className={`flex gap-4 p-5 rounded-xl ${message.role === "user" ? "bg-slate-50" : "bg-white"}`}>
+                  {message.role === "assistant" ? (
+                    <div className="shrink-0 h-8 w-8 flex items-center justify-center bg-white border border-slate-100 rounded-full shadow-sm">
+                      <img src="/camrail-logo.png" alt="RailMind" className="h-4 w-auto object-contain" />
+                    </div>
+                  ) : (
+                    <div className="shrink-0 h-8 w-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold text-xs mt-1">
+                      U
+                    </div>
+                  )}
+                  
+                  <div className="flex-1 min-w-0 flex flex-col items-start">
+                    {/* Main Content */}
+                    <div className={`w-full ${message.abstention ? "p-4 bg-red-50 border border-red-100 rounded-xl text-slate-800" : "text-slate-800"}`}>
+                      {message.role === "assistant" ? (
+                        <div className="prose prose-sm prose-slate max-w-none leading-relaxed">
+                          <ReactMarkdown>{message.content}</ReactMarkdown>
+                        </div>
+                      ) : (
+                        <p className="whitespace-pre-wrap text-sm text-slate-700 leading-relaxed font-medium">{message.content}</p>
+                      )}
+                    </div>
+
+                    {/* Assistant Metadata (Confidence & Citations) */}
+                    {message.role === "assistant" && (
+                      <div className="w-full mt-4 space-y-5">
+                        {/* Confidence Badge */}
+                        {message.confidence && (
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold border ${confidenceConfig[message.confidence].className}`}>
+                              {message.abstention ? "⚠ " : ""}{confidenceConfig[message.confidence].label}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Citations Cards */}
+                        {message.citations && message.citations.length > 0 && (
+                          <div className="mt-4 pt-4 border-t border-slate-100">
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Sources utilisées ({message.citations.length})</p>
+                            <div className="flex flex-wrap gap-3">
+                              {message.citations.map((cit, idx) => (
+                                <Link 
+                                  key={idx}
+                                  href={`/documents/${cit.document_id}`}
+                                  target="_blank"
+                                  className="group flex flex-col p-4 rounded-xl border border-slate-200 bg-white hover:border-camrail-red hover:shadow-sm transition-all w-64"
+                                >
+                                  <div className="mb-1">
+                                    <span className="text-xs text-camrail-red font-bold uppercase tracking-wider">Source {idx + 1}</span>
+                                  </div>
+                                  <h4 className="text-sm font-semibold text-slate-800 truncate group-hover:text-camrail-red mb-2">
+                                    {cit.document_title}
+                                  </h4>
+                                  <div className="flex flex-col gap-1 text-xs text-slate-500">
+                                    {cit.document_version && <span>Version {cit.document_version}</span>}
+                                    {cit.page_start > 0 && <span>Page {cit.page_start}</span>}
+                                  </div>
+                                </Link>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {/* Loading State */}
+              {loading && (
+                <div className="flex gap-4 p-5 rounded-xl bg-white">
+                  <div className="shrink-0 h-8 w-8 flex items-center justify-center bg-white border border-slate-100 rounded-full shadow-sm animate-pulse">
+                    <img src="/camrail-logo.png" alt="RailMind" className="h-4 w-auto object-contain" />
+                  </div>
+                  <div className="flex flex-col items-start mt-1.5">
+                    <div className="flex items-center gap-3">
+                      <div className="flex gap-1">
+                        <span className="h-2 w-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></span>
+                        <span className="h-2 w-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></span>
+                        <span className="h-2 w-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></span>
+                      </div>
+                      <span className="text-sm text-slate-500 font-medium">Recherche dans les documents...</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <div ref={messagesEndRef} className="h-4" />
+            </div>
+          )}
         </div>
 
-        {/* Chat */}
-        <div className="flex-1 rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="space-y-6 p-4 sm:p-6">
-            {messages.map((message, index) => (
-              <div
-                key={index}
-                className={
-                  message.role === "user"
-                    ? "flex justify-end"
-                    : "flex gap-3"
-                }
-              >
-                {message.role === "assistant" && (
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-600 text-sm font-bold text-white">
-                    C
-                  </div>
-                )}
-
-                <div className="max-w-3xl">
-                  {/* Message */}
-                  <div
-                    className={
-                      message.role === "user"
-                        ? "rounded-2xl rounded-tr-md bg-red-600 p-4 text-white sm:p-5"
-                        : message.abstention
-                        ? "rounded-2xl rounded-tl-md bg-yellow-50 border border-yellow-200 p-4 sm:p-5"
-                        : "rounded-2xl rounded-tl-md bg-slate-50 p-4 sm:p-5"
-                    }
-                  >
-                    <p
-                      className={
-                        message.role === "user"
-                          ? "text-sm leading-7 text-white"
-                          : message.abstention
-                          ? "text-sm leading-7 text-slate-800"
-                          : "text-sm leading-7 text-slate-700"
-                      }
-                    >
-                      {message.content}
-                    </p>
-
-                    {/* Confidence */}
-                    {message.confidence && !message.abstention && (
-                      <div className="mt-4">
-                        <span
-                          className={
-                            confidenceConfig[message.confidence].className
-                          }
-                        >
-                          Confiance{" "}
-                          {confidenceConfig[message.confidence].label}
-                        </span>
-                      </div>
-                    )}
-                    {message.abstention && (
-                      <div className="mt-4">
-                        <span className="inline-flex rounded-full bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-800">
-                          Abstention — Aucune réponse sûre disponible
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Citations */}
-                  {message.citations &&
-                    message.citations.length > 0 && (
-                      <div className="mt-4">
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                          {message.citations.length > 1
-                            ? "Sources"
-                            : "Source"}
-                        </p>
-
-                        <div className="space-y-3">
-                          {message.citations.map(
-                            (citation, citationIndex) => {
-                              // Deep link to document page with anchor
-                              const docHref = citation.document_id
-                                ? `/documents/${citation.document_id}#page-${citation.page_start}`
-                                : undefined;
-
-                              return (
-                                <Link
-                                  key={citationIndex}
-                                  href={docHref || "#"}
-                                  className={`block rounded-xl border border-slate-200 bg-white p-4 transition ${
-                                    docHref
-                                      ? "cursor-pointer hover:border-red-300 hover:bg-red-50"
-                                      : "cursor-default"
-                                  }`}
-                                >
-                                  <p className="text-sm font-semibold text-slate-800">
-                                    {citation.document_title}
-                                  </p>
-
-                                  <p className="mt-1 text-xs text-slate-500">
-                                    {citation.document_version && (
-                                      <span className="mr-2">v{citation.document_version}</span>
-                                    )}
-
-                                    {citation.page_start === citation.page_end
-                                      ? `Page ${citation.page_start}`
-                                      : `Pages ${citation.page_start}-${citation.page_end}`}
-                                  </p>
-
-                                  {citation.section && (
-                                    <p className="mt-1 text-xs text-slate-600 font-medium">
-                                      📍 {citation.section}
-                                    </p>
-                                  )}
-
-                                  <p className="mt-3 text-xs leading-5 text-slate-500">
-                                    « {citation.excerpt} »
-                                  </p>
-
-                                  {docHref && (
-                                    <p className="mt-2 text-xs text-red-600 font-semibold">
-                                      Voir le document →
-                                    </p>
-                                  )}
-                                </Link>
-                              );
-                            },
-                          )}
-                        </div>
-                      </div>
-                    )}
-                </div>
-              </div>
-            ))}
-
-            {/* Loading */}
-            {loading && (
-              <div className="flex gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-600 text-sm font-bold text-white">
-                  C
-                </div>
-
-                <div className="rounded-2xl bg-slate-50 px-5 py-4 text-sm text-slate-400">
-                  Recherche dans les documents...
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Input */}
-          <div className="border-t border-slate-200 bg-white p-4 sm:p-5">
-            <form
+        {/* Sticky Input Area */}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent pt-10 pb-6 px-4">
+          <div className="max-w-3xl mx-auto">
+            <form 
               onSubmit={handleSubmit}
-              className="flex items-end gap-2"
+              className="relative rounded-2xl border border-slate-300 bg-white shadow-lg overflow-hidden focus-within:border-camrail-red focus-within:ring-1 focus-within:ring-camrail-red transition-all"
             >
-              <div className="relative flex-1">
-                <textarea
-                  value={question}
-                  onChange={(event) => setQuestion(event.target.value)}
-                  placeholder="Posez votre question..."
-                  rows={1}
-                  disabled={loading}
-                  className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-red-500 focus:bg-white focus:ring-2 focus:ring-red-500/10 disabled:opacity-60"
-                />
-              </div>
-
+              <textarea
+                ref={inputRef}
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Posez votre question à RailMind..."
+                className="w-full resize-none bg-transparent py-4 pl-4 pr-14 text-sm text-slate-900 placeholder-slate-400 focus:outline-none min-h-[60px] max-h-[200px]"
+                rows={Math.min(5, Math.max(1, question.split('\n').length))}
+                disabled={loading}
+              />
               <button
                 type="submit"
-                disabled={loading || !question.trim()}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-600 text-white transition hover:bg-red-700 disabled:bg-slate-300"
-                aria-label="Envoyer"
+                disabled={!question.trim() || loading}
+                className="absolute right-2 bottom-2 rounded-xl p-2.5 text-white bg-camrail-red hover:bg-camrail-red-dark disabled:bg-slate-200 disabled:text-slate-400 transition-colors"
               >
-                ↑
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
               </button>
             </form>
-
-            <p className="mt-2 text-center text-[11px] text-slate-400">
-              Les réponses sont générées à partir des documents autorisés.
+            <p className="text-center text-xs text-slate-400 mt-3">
+              RailMind peut faire des erreurs. Vérifiez toujours les documents sources.
             </p>
           </div>
         </div>

@@ -24,9 +24,7 @@ export function saveSession(session: AuthSession): void {
   if (!storageAvailable()) return;
 
   try {
-    const toStore = { ...session } as any;
-    delete toStore.token; // never persist token
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(toStore));
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
   } catch {
     // best-effort: swallow storage errors
   }
@@ -63,7 +61,8 @@ export function setAccessToken(token: string | null) {
 }
 
 export function getAccessToken(): string | null {
-  return inMemoryToken;
+  const session = getSession();
+  return session?.token || inMemoryToken;
 }
 
 export async function refreshAccessToken(): Promise<AuthSession | null> {

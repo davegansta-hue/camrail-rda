@@ -19,7 +19,10 @@ export async function apiFetch(
 
   const headers = new Headers(options.headers);
 
-  headers.set("Content-Type", "application/json");
+  // Omit Content-Type for FormData so the browser can set the boundary automatically
+  if (!(options.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
 
   const accessToken = getAccessToken() || session?.token;
 
