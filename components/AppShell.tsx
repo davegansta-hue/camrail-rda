@@ -66,8 +66,7 @@ export default function AppShell({
               className="h-10 w-auto object-contain"
             />
             <div className="text-center">
-              <p className="text-sm font-bold text-slate-900 leading-tight">CAMRAIL</p>
-              <p className="text-xs font-semibold text-slate-500">RailMind</p>
+              <p className="text-sm font-bold text-slate-900 leading-tight">RailMind</p>
             </div>
           </Link>
           <button 
