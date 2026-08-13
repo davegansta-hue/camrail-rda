@@ -36,6 +36,7 @@ export default function DocumentViewerPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [fileError, setFileError] = useState("");
   const [linkedPageNumber, setLinkedPageNumber] = useState<number | null>(null);
   const [fileUrl, setFileUrl] = useState<string | null>(null);
 
@@ -69,9 +70,13 @@ export default function DocumentViewerPage() {
           if (fileRes.ok) {
             const blob = await fileRes.blob();
             setFileUrl(URL.createObjectURL(blob));
+          } else {
+            const errData = await fileRes.json().catch(() => ({}));
+            setFileError(errData.detail || `Erreur serveur ${fileRes.status}`);
           }
         } catch (e) {
           console.error("Failed to load document file", e);
+          setFileError(e instanceof Error ? e.message : "Erreur de connexion");
         }
 
         // Extract page number from URL hash (e.g., #page-5)
@@ -201,7 +206,10 @@ export default function DocumentViewerPage() {
                       {loading ? (
                         <p>Chargement du document...</p>
                       ) : (
-                        <p>Impossible d'afficher le document original.</p>
+                        <div>
+                          <p>Impossible d'afficher le document original.</p>
+                          {fileError && <p className="text-xs text-red-500 mt-2">Détail : {fileError}</p>}
+                        </div>
                       )}
                     </div>
                   )}
