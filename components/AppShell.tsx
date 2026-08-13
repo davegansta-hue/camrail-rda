@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { clearSession, getSession } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
 
 export default function AppShell({
   children,
@@ -15,13 +16,38 @@ export default function AppShell({
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [session, setSession] = useState<ReturnType<typeof getSession>>(null);
+  const [conversations, setConversations] = useState<{id: number, title: string}[]>([]);
+
+  const loadConversations = () => {
+    const currentSession = getSession();
+    setSession(currentSession);
+    
+    if (currentSession) {
+      apiFetch("/assistant/conversations")
+        .then((data: any) => {
+          if (Array.isArray(data)) {
+            setConversations(data);
+          }
+        })
+        .catch(console.error);
+    }
+  };
 
   useEffect(() => {
-    setSession(getSession());
+    loadConversations();
+
+    const handleReload = () => {
+      loadConversations();
+    };
+
+    window.addEventListener("reload-conversations", handleReload);
+    return () => window.removeEventListener("reload-conversations", handleReload);
   }, [pathname]);
 
   function handleLogout() {
     clearSession();
+    sessionStorage.removeItem("railmind_chat_messages");
+    sessionStorage.removeItem("railmind_conversation_id");
     setSession(null);
     router.push("/login");
   }
@@ -66,7 +92,7 @@ export default function AppShell({
               className="h-10 w-auto object-contain"
             />
             <div className="text-center">
-              <p className="text-sm font-bold text-slate-900 leading-tight">RailMind</p>
+              <p className="text-sm font-bold text-slate-900 leading-tight">RailMind Lite</p>
             </div>
           </Link>
           <button 
@@ -79,19 +105,30 @@ export default function AppShell({
 
         {/* New Conversation Button */}
         <div className="p-4">
-          <Link 
+          <a
             href="/assistant"
-            onClick={() => setMobileMenuOpen(false)}
+            onClick={(e) => {
+              e.preventDefault();
+              setMobileMenuOpen(false);
+              sessionStorage.removeItem("railmind_chat_messages");
+              sessionStorage.removeItem("railmind_conversation_id");
+              window.location.href = "/assistant";
+            }}
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-camrail-red px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-camrail-red-dark"
           >
             <span>+</span> Nouvelle conversation
-          </Link>
+          </a>
         </div>
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-4 space-y-1">
           <p className="px-3 text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 mt-4">Menu principal</p>
-          {navItems.map((item) => {
+          {navItems.filter((item) => {
+            if (item.name === 'Dashboard' || item.name === 'Documents') {
+              return session?.role === 'admin' || session?.role === 'document_admin';
+            }
+            return true;
+          }).map((item) => {
             const isActive = pathname === item.href;
             return (
               <Link
@@ -110,6 +147,30 @@ export default function AppShell({
               </Link>
             );
           })}
+
+          {/* Historique des discussions */}
+          {session && (
+            <>
+              <p className="px-3 text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 mt-6">Historique</p>
+              {conversations.length === 0 ? (
+                <p className="px-3 text-xs text-slate-500 italic">Aucune conversation</p>
+              ) : (
+                <div className="space-y-1">
+                  {conversations.map((conv) => (
+                    <Link
+                      key={conv.id}
+                      href={`/assistant?c=${conv.id}`}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="block rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900 truncate"
+                      title={conv.title}
+                    >
+                      {conv.title}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </nav>
 
         {/* User Profile */}

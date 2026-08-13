@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Suspense } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import AuthGuard from "@/components/AuthGuard";
 import { apiFetch, ApiError } from "@/lib/api";
 import type { BackendCitation, AssistantResponse } from "@/lib/backend-types";
@@ -33,12 +34,70 @@ const confidenceConfig = {
   },
 };
 
-export default function AssistantPage() {
+function AssistantContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const cParam = searchParams.get("c");
+
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Load chat history from server if param c exists, else use sessionStorage
+  useEffect(() => {
+    if (cParam) {
+      const cid = parseInt(cParam, 10);
+      setConversationId(cid);
+      setLoading(true);
+      apiFetch(`/assistant/conversations/${cid}/messages`)
+        .then((data: any) => {
+          if (Array.isArray(data)) {
+            setMessages(data.map((m: any) => ({
+              role: m.role,
+              content: m.content,
+              citations: m.citations || [],
+              confidence: m.role === 'assistant' ? 'medium' : undefined // Basic fallback for UI
+            })));
+          }
+        })
+        .catch(console.error)
+        .finally(() => {
+          setLoading(false);
+          setIsLoaded(true);
+        });
+    } else {
+      const saved = sessionStorage.getItem("railmind_chat_messages");
+      const savedConvId = sessionStorage.getItem("railmind_conversation_id");
+      
+      if (saved) {
+        try {
+          setMessages(JSON.parse(saved));
+        } catch (e) {
+          console.error("Failed to parse saved messages");
+        }
+      }
+      
+      if (savedConvId) {
+        setConversationId(parseInt(savedConvId, 10));
+      }
+      
+      setIsLoaded(true);
+    }
+  }, [cParam]);
+
+  // Save chat history to sessionStorage when it changes
+  useEffect(() => {
+    if (isLoaded) {
+      sessionStorage.setItem("railmind_chat_messages", JSON.stringify(messages));
+      if (conversationId) {
+        sessionStorage.setItem("railmind_conversation_id", conversationId.toString());
+      }
+    }
+  }, [messages, conversationId, isLoaded]);
 
   // Auto-scroll to bottom
   const scrollToBottom = () => {
@@ -65,10 +124,21 @@ export default function AssistantPage() {
     setLoading(true);
 
     try {
+      const payload: any = { query: trimmedQuestion };
+      if (conversationId) {
+        payload.conversation_id = conversationId;
+      }
+      
       const data = (await apiFetch("/assistant/query", {
         method: "POST",
-        body: JSON.stringify({ query: trimmedQuestion }),
-      })) as AssistantResponse;
+        body: JSON.stringify(payload),
+      })) as AssistantResponse & { conversation_id?: number };
+      
+      if (data.conversation_id && !conversationId) {
+        setConversationId(data.conversation_id);
+        window.dispatchEvent(new Event("reload-conversations"));
+        router.replace(`?c=${data.conversation_id}`);
+      }
 
       setMessages((current) => [
         ...current,
@@ -125,7 +195,7 @@ export default function AssistantPage() {
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full px-4 text-center mt-10 md:mt-20">
               <img src="/camrail-logo.png" alt="CAMRAIL Logo" className="h-12 w-auto object-contain mb-6" />
-              <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-2">RailMind</h2>
+              <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-2">RailMind Lite</h2>
               <p className="text-slate-500 mb-6 text-sm md:text-base font-medium">Votre assistant documentaire CAMRAIL</p>
               
               <p className="text-sm text-slate-600 mb-8 max-w-md">
@@ -199,7 +269,6 @@ export default function AssistantPage() {
                                 <Link 
                                   key={idx}
                                   href={`/documents/${cit.document_id}`}
-                                  target="_blank"
                                   className="group flex flex-col p-4 rounded-xl border border-slate-200 bg-white hover:border-camrail-red hover:shadow-sm transition-all w-64"
                                 >
                                   <div className="mb-1">
@@ -259,7 +328,7 @@ export default function AssistantPage() {
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Posez votre question à RailMind..."
+                placeholder="Posez votre question à RailMind Lite..."
                 className="w-full resize-none bg-transparent py-4 pl-4 pr-14 text-sm text-slate-900 placeholder-slate-400 focus:outline-none min-h-[60px] max-h-[200px]"
                 rows={Math.min(5, Math.max(1, question.split('\n').length))}
                 disabled={loading}
@@ -273,11 +342,19 @@ export default function AssistantPage() {
               </button>
             </form>
             <p className="text-center text-xs text-slate-400 mt-3">
-              RailMind peut faire des erreurs. Vérifiez toujours les documents sources.
+              RailMind Lite peut faire des erreurs. Vérifiez toujours les documents sources.
             </p>
           </div>
         </div>
       </div>
     </AuthGuard>
+  );
+}
+
+export default function AssistantPage() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center">Chargement...</div>}>
+      <AssistantContent />
+    </Suspense>
   );
 }

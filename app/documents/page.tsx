@@ -4,10 +4,11 @@ import Link from "next/link";
 import { useEffect, useState, useRef } from "react";
 import AuthGuard from "@/components/AuthGuard";
 import { apiFetch } from "@/lib/api";
+import { getSession } from "@/lib/auth";
 import type { DocumentItem } from "@/lib/backend-types";
 
 // Keep DocumentStatus type inferred or import it if exported from backend-types
-type DocumentStatus = "processing" | "indexed" | "active" | "failed";
+type DocumentStatus = "processing" | "indexed" | "active" | "failed" | "archived";
 
 const statusConfig: Record<
   DocumentStatus,
@@ -37,6 +38,11 @@ const statusConfig: Record<
     className: "bg-slate-100 text-slate-800 border-slate-200",
     dot: "bg-slate-600",
   },
+  archived: {
+    label: "Archivé",
+    className: "bg-gray-100 text-gray-700 border-gray-300",
+    dot: "bg-gray-500",
+  },
 };
 
 function formatDate(date: string) {
@@ -57,7 +63,11 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [role, setRole] = useState<string | null>(null);
+  const [activateOnUpload, setActivateOnUpload] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isAdmin = role === "admin" || role === "document_admin";
 
   async function loadDocuments() {
     try {
@@ -77,7 +87,13 @@ export default function DocumentsPage() {
   }
 
   useEffect(() => {
+    const session = getSession();
+    if (session?.role === "read_only") {
+      window.location.href = "/assistant";
+      return;
+    }
     loadDocuments();
+    setRole(session?.role || null);
   }, []);
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -91,6 +107,7 @@ export default function DocumentsPage() {
       formData.append("title", file.name);
       formData.append("category", "Général");
       formData.append("department", "Opérations");
+      formData.append("initial_status", activateOnUpload ? "active" : "indexed");
 
       await apiFetch("/documents", {
         method: "POST",
@@ -106,6 +123,17 @@ export default function DocumentsPage() {
     }
   }
 
+  async function handleStatusChange(id: string | number, currentStatus: string) {
+    if (!isAdmin) return;
+    try {
+      const endpoint = currentStatus === "active" ? `/documents/${id}/archive` : `/documents/${id}/activate`;
+      await apiFetch(endpoint, { method: "POST" });
+      await loadDocuments();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Erreur lors du changement de statut.");
+    }
+  }
+
   const filteredDocuments = documents.filter((document) =>
     document.title.toLowerCase().includes(search.toLowerCase())
   );
@@ -117,7 +145,7 @@ export default function DocumentsPage() {
         <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-camrail-red mb-1">
-              CAMRAIL RailMind
+              CAMRAIL RailMind Lite
             </p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">
               Gestion Documentaire
@@ -134,15 +162,28 @@ export default function DocumentsPage() {
             className="hidden" 
             accept=".pdf,.docx" 
           />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-camrail-red px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-camrail-red-dark disabled:opacity-50"
-          >
-            <span className="text-lg leading-none">+</span>
-            {uploading ? "Envoi..." : "Nouveau document"}
-          </button>
+          <div className="flex items-center gap-4">
+            {isAdmin && (
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={activateOnUpload}
+                  onChange={(e) => setActivateOnUpload(e.target.checked)}
+                  className="rounded border-slate-300 text-camrail-red focus:ring-camrail-red"
+                />
+                Activer immédiatement
+              </label>
+            )}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-camrail-red px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-camrail-red-dark disabled:opacity-50"
+            >
+              <span className="text-lg leading-none">+</span>
+              {uploading ? "Envoi..." : "Nouveau document"}
+            </button>
+          </div>
         </div>
 
         {/* Stats */}
@@ -225,6 +266,11 @@ export default function DocumentsPage() {
                     <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
                       Statut
                     </th>
+                    {isAdmin && (
+                      <th scope="col" className="relative px-6 py-4">
+                        <span className="sr-only">Actions</span>
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-slate-100">
@@ -266,6 +312,20 @@ export default function DocumentsPage() {
                             {status.label}
                           </span>
                         </td>
+                        {isAdmin && (
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            {(document.status === "indexed" || document.status === "archived") && (
+                              <button onClick={() => handleStatusChange(document.id, document.status)} className="text-emerald-600 hover:text-emerald-900 bg-emerald-50 px-3 py-1 rounded-md transition-colors ml-2">
+                                Activer
+                              </button>
+                            )}
+                            {document.status === "active" && (
+                              <button onClick={() => handleStatusChange(document.id, document.status)} className="text-amber-600 hover:text-amber-900 bg-amber-50 px-3 py-1 rounded-md transition-colors ml-2">
+                                Archiver
+                              </button>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -298,6 +358,16 @@ export default function DocumentsPage() {
                         {status.label}
                       </span>
                     </div>
+                    {isAdmin && (document.status === "indexed" || document.status === "archived") && (
+                      <button onClick={() => handleStatusChange(document.id, document.status)} className="mt-3 w-full text-center text-emerald-600 font-medium hover:text-emerald-800 bg-emerald-50 py-2 rounded-lg text-sm transition-colors">
+                        Activer le document
+                      </button>
+                    )}
+                    {isAdmin && document.status === "active" && (
+                      <button onClick={() => handleStatusChange(document.id, document.status)} className="mt-3 w-full text-center text-amber-600 font-medium hover:text-amber-800 bg-amber-50 py-2 rounded-lg text-sm transition-colors">
+                        Archiver le document
+                      </button>
+                    )}
                   </div>
                 );
               })}

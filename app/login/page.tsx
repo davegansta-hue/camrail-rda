@@ -40,22 +40,18 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10">
       <div className="w-full max-w-md">
         {/* Logo & Header */}
-        <div className="mb-10 text-center">
+        <div className="flex flex-col items-center justify-center gap-3 w-full mb-8">
           <img 
             src="/camrail-logo.png" 
             alt="CAMRAIL Logo" 
-            className="mx-auto h-16 w-auto object-contain mb-6"
+            className="h-16 w-auto object-contain"
           />
-
-          <p className="text-xs font-bold uppercase tracking-widest text-camrail-red mb-2">
-            CAMRAIL
-          </p>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-            RailMind
-          </h1>
-          <p className="mt-3 text-sm text-slate-500 font-medium">
-            Assistant documentaire
-          </p>
+          <div className="text-center">
+            <p className="text-xl font-bold text-slate-900 leading-tight">RailMind Lite</p>
+            <p className="text-sm font-medium text-slate-500 uppercase tracking-widest mt-1">
+              Assistant IA Documentaire
+            </p>
+          </div>
         </div>
 
         {/* Login card */}

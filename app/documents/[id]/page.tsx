@@ -37,6 +37,7 @@ export default function DocumentViewerPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [linkedPageNumber, setLinkedPageNumber] = useState<number | null>(null);
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadDocument() {
@@ -50,6 +51,29 @@ export default function DocumentViewerPage() {
 
         setDocument(data as DocumentDetail);
 
+        // Fetch file blob
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+        const sessionStr = sessionStorage.getItem("railmind_session");
+        let token = "";
+        if (sessionStr) {
+          const parsed = JSON.parse(sessionStr);
+          token = parsed.token;
+        }
+
+        try {
+          const fileRes = await fetch(`${apiUrl}/documents/${documentId}/file`, {
+            headers: {
+              "Authorization": `Bearer ${token}`
+            }
+          });
+          if (fileRes.ok) {
+            const blob = await fileRes.blob();
+            setFileUrl(URL.createObjectURL(blob));
+          }
+        } catch (e) {
+          console.error("Failed to load document file", e);
+        }
+
         // Extract page number from URL hash (e.g., #page-5)
         if (typeof window !== "undefined") {
           const hash = window.location.hash;
@@ -58,10 +82,10 @@ export default function DocumentViewerPage() {
             setLinkedPageNumber(parseInt(pageMatch[1], 10));
           }
         }
-      } catch (error) {
+      } catch (err) {
         setError(
-          error instanceof Error
-            ? error.message
+          err instanceof Error
+            ? err.message
             : "Impossible de charger le document.",
         );
       } finally {
@@ -167,65 +191,20 @@ export default function DocumentViewerPage() {
                 </div>
               </aside>
 
-              {/* Document */}
-              <section className="rounded-2xl border border-slate-200 bg-slate-100 p-3 sm:p-5 lg:p-8">
-                <div className="mx-auto max-w-3xl space-y-5">
-                  {document.pages.map((page) => {
-                    const isLinkedPage = page.page_number === linkedPageNumber;
-
-                    return (
-                      <article
-                        key={page.id}
-                        id={`page-${page.page_number}`}
-                        className={`scroll-mt-6 bg-white p-6 shadow-sm sm:p-10 transition ${
-                          isLinkedPage
-                            ? "border-2 border-amber-300 bg-amber-50"
-                            : ""
-                        }`}
-                      >
-                        {isLinkedPage && (
-                          <div className="mb-4 inline-flex items-center gap-2 rounded-lg bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800">
-                            <span>🔗</span>
-                            Citation source
-                          </div>
-                        )}
-
-                        <div className="mb-8 flex items-center justify-between border-b border-slate-100 pb-4">
-                          <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                            {document.title}
-                          </span>
-
-                          <span className="text-xs text-slate-400">
-                            Page {page.page_number}
-                          </span>
-                        </div>
-
-                        <h2 className="text-xl font-bold text-slate-900">
-                          Page {page.page_number}
-                        </h2>
-
-                        <p className="mt-5 whitespace-pre-line text-sm leading-8 text-slate-700">
-                          {page.extracted_text}
-                        </p>
-
-                        <div className="mt-6 rounded-xl border border-slate-100 bg-slate-50 p-4">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                            Méthode d'extraction
-                          </p>
-
-                          <p className="mt-1 text-xs text-slate-500">
-                            {page.extraction_method}
-                          </p>
-                        </div>
-
-                        <div className="mt-10 border-t border-slate-100 pt-4 text-right">
-                          <span className="text-xs text-slate-400">
-                            {document.title} · v{document.version}
-                          </span>
-                        </div>
-                      </article>
-                    );
-                  })}
+              {/* Document File Viewer */}
+              <section className="rounded-2xl border border-slate-200 bg-slate-100 p-3 sm:p-5 h-[800px] flex flex-col">
+                <div className="flex-1 w-full h-full bg-white rounded-xl overflow-hidden shadow-inner">
+                  {fileUrl ? (
+                    <iframe src={fileUrl} className="w-full h-full border-0" title="Visionneuse de document" />
+                  ) : (
+                    <div className="flex items-center justify-center w-full h-full text-slate-400 flex-col gap-3">
+                      {loading ? (
+                        <p>Chargement du document...</p>
+                      ) : (
+                        <p>Impossible d'afficher le document original.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </section>
             </div>
