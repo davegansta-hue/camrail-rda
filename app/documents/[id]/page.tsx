@@ -54,11 +54,10 @@ export default function DocumentViewerPage() {
 
         // Fetch file blob
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-        const sessionStr = sessionStorage.getItem("railmind_session");
         let token = "";
-        if (sessionStr) {
-          const parsed = JSON.parse(sessionStr);
-          token = parsed.token;
+        if (typeof window !== "undefined") {
+          const { getAccessToken, getSession } = require("@/lib/auth");
+          token = getAccessToken() || getSession()?.token || "";
         }
 
         try {

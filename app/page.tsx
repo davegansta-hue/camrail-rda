@@ -69,10 +69,10 @@ export default function DashboardPage() {
       }
     }
 
-    const session = sessionStorage.getItem("railmind_session");
-    if (session) {
-      const parsed = JSON.parse(session);
-      if (parsed.role === "read_only") {
+    if (typeof window !== "undefined") {
+      const { getSession } = require("@/lib/auth");
+      const session = getSession();
+      if (session && session.role === "read_only") {
         window.location.href = "/assistant";
         return;
       }
