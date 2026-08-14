@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import AuthGuard from "@/components/AuthGuard";
 import { apiFetch } from "@/lib/api";
+import { getSession } from "@/lib/auth";
 
 type DashboardSummary = {
   documents_total: number;
@@ -70,7 +71,6 @@ export default function DashboardPage() {
     }
 
     if (typeof window !== "undefined") {
-      const { getSession } = require("@/lib/auth");
       const session = getSession();
       if (session && session.role === "read_only") {
         window.location.href = "/assistant";

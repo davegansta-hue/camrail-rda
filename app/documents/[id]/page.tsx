@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import AuthGuard from "@/components/AuthGuard";
 import { apiFetch } from "@/lib/api";
+import { getAccessToken, getSession } from "@/lib/auth";
 
 type DocumentPage = {
   id: string;
@@ -56,7 +57,6 @@ export default function DocumentViewerPage() {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
         let token = "";
         if (typeof window !== "undefined") {
-          const { getAccessToken, getSession } = require("@/lib/auth");
           token = getAccessToken() || getSession()?.token || "";
         }
 
