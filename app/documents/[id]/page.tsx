@@ -68,7 +68,9 @@ export default function DocumentViewerPage() {
             }
           });
           if (fileRes.ok) {
-            const blob = await fileRes.blob();
+            const rawBlob = await fileRes.blob();
+            const contentType = fileRes.headers.get("content-type") || "application/pdf";
+            const blob = new Blob([rawBlob], { type: contentType });
             setFileUrl(URL.createObjectURL(blob));
           } else {
             const errData = await fileRes.json().catch(() => ({}));
