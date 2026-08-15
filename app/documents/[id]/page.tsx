@@ -38,7 +38,7 @@ export default function DocumentViewerPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [fileError, setFileError] = useState("");
-  const [linkedPageNumber, setLinkedPageNumber] = useState<number | null>(null);
+  const [urlHash, setUrlHash] = useState<string>("");
   const [fileUrl, setFileUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -53,41 +53,20 @@ export default function DocumentViewerPage() {
 
         setDocument(data as DocumentDetail);
 
-        // Fetch file blob
+        // Set direct file URL to avoid Blob limitations and enable native PDF highlighting
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
         let token = "";
         if (typeof window !== "undefined") {
           token = getAccessToken() || getSession()?.token || "";
         }
-
-        try {
-          const fileRes = await fetch(`${apiUrl}/documents/${documentId}/file`, {
-            headers: {
-              "Authorization": `Bearer ${token}`
-            }
-          });
-          if (fileRes.ok) {
-            const rawBlob = await fileRes.blob();
-            const contentType = fileRes.headers.get("content-type") || "application/pdf";
-            const blob = new Blob([rawBlob], { type: contentType });
-            setFileUrl(URL.createObjectURL(blob));
-          } else {
-            const errData = await fileRes.json().catch(() => ({}));
-            setFileError(errData.detail || `Erreur serveur ${fileRes.status}`);
-          }
-        } catch (e) {
-          console.error("Failed to load document file", e);
-          setFileError(e instanceof Error ? e.message : "Erreur de connexion");
+        
+        if (token) {
+          setFileUrl(`${apiUrl}/documents/${documentId}/file?token=${token}`);
+        } else {
+          setFileError("Non autorisé. Veuillez vous reconnecter.");
         }
 
-        // Extract page number from URL hash (e.g., #page-5)
-        if (typeof window !== "undefined") {
-          const hash = window.location.hash;
-          const pageMatch = hash.match(/page-(\d+)/);
-          if (pageMatch) {
-            setLinkedPageNumber(parseInt(pageMatch[1], 10));
-          }
-        }
+        // We don't extract page number manually anymore, we pass the raw hash to the iframe.
       } catch (err) {
         setError(
           err instanceof Error
@@ -101,6 +80,15 @@ export default function DocumentViewerPage() {
 
     loadDocument();
   }, [documentId]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setUrlHash(window.location.hash);
+      const handleHashChange = () => setUrlHash(window.location.hash);
+      window.addEventListener("hashchange", handleHashChange);
+      return () => window.removeEventListener("hashchange", handleHashChange);
+    }
+  }, []);
 
   return (
     <AuthGuard>
@@ -162,13 +150,7 @@ export default function DocumentViewerPage() {
                     {document.department}
                   </p>
                 </div>
-
-                <button
-                  type="button"
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-                >
-                  Télécharger
-                </button>
+                {/* Téléchargement désactivé pour des raisons de sécurité (fuite de données) */}
               </div>
             </div>
 
@@ -185,7 +167,7 @@ export default function DocumentViewerPage() {
                     {document.pages.map((page) => (
                       <a
                         key={page.id}
-                        href={`#page-${page.page_number}`}
+                        href={`#page=${page.page_number}`}
                         className="flex items-center justify-between rounded-lg px-3 py-2 text-sm text-slate-600 transition hover:bg-slate-50 hover:text-red-600"
                       >
                         <span>
@@ -198,10 +180,65 @@ export default function DocumentViewerPage() {
               </aside>
 
               {/* Document File Viewer */}
-              <section className="rounded-2xl border border-slate-200 bg-slate-100 p-3 sm:p-5 h-[800px] flex flex-col">
-                <div className="flex-1 w-full h-full bg-white rounded-xl overflow-hidden shadow-inner">
-                  {fileUrl ? (
-                    <iframe src={fileUrl} className="w-full h-full border-0" title="Visionneuse de document" />
+              <section className="rounded-2xl border border-slate-200 bg-slate-100 p-3 sm:p-5 h-[800px] flex flex-col relative" onContextMenu={(e) => e.preventDefault()}>
+                {/* Filigrane de sécurité anti-capture */}
+                <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center opacity-5 overflow-hidden">
+                   <div className="transform -rotate-45 text-4xl font-black text-black tracking-widest whitespace-pre">
+                      CONFIDENTIEL CAMRAIL   CONFIDENTIEL CAMRAIL   CONFIDENTIEL CAMRAIL
+                   </div>
+                </div>
+                
+                <div className="flex-1 w-full h-full bg-white rounded-xl overflow-hidden shadow-inner relative z-0">
+                  {fileUrl && document.title.toLowerCase().endsWith('.pdf') ? (
+                    <iframe src={`${fileUrl}${urlHash ? urlHash + '&toolbar=0&navpanes=0' : '#toolbar=0&navpanes=0'}`} className="w-full h-full border-0" title="Visionneuse de document" />
+                  ) : fileUrl ? (
+                    <div className="p-6 sm:p-10 overflow-y-auto h-full text-slate-700 bg-white">
+                      <div className="max-w-3xl mx-auto space-y-12">
+                        {document.pages.sort((a, b) => a.page_number - b.page_number).map((page) => {
+                          const wordsMatch = urlHash.match(/words=([^&]*)/);
+                          const wordsParam = wordsMatch ? decodeURIComponent(wordsMatch[1]) : "";
+                          let text = page.extracted_text || "Aucun texte extrait pour cette page.";
+                          
+                          // Liste des petits mots de liaison à ignorer pour éviter de surligner tout le document
+                          const stopWords = new Set(["les", "une", "des", "aux", "est", "sont", "qui", "que", "quoi", "dont", "par", "sur", "ils", "ces", "ses", "son"]);
+                          
+                          // Extraire TOUS les mots de la réponse IA (qui a été passée dans words=)
+                          // Contrainte : uniquement les mots de 3 caractères ou plus
+                          const wordsToHighlight = wordsParam
+                            .replace(/[^\wÀ-ÿ\d]/g, ' ')
+                            .split(' ')
+                            .map(w => w.trim().toLowerCase())
+                            .filter(w => w.length >= 3 && !stopWords.has(w));
+                            
+                          // Fonction pour surligner les mots
+                          const renderHighlightedText = (content: string) => {
+                            if (wordsToHighlight.length === 0) return content;
+                            
+                            // Créer une regex qui match n'importe quel mot de la liste
+                            // On trie par longueur décroissante pour éviter qu'un mot court (ex: "rail") empêche le match d'un mot long (ex: "camrail")
+                            const sortedWords = [...new Set(wordsToHighlight)].sort((a, b) => b.length - a.length);
+                            const regex = new RegExp(`\\b(${sortedWords.join('|')})\\b`, 'gi');
+                            const parts = content.split(regex);
+                            
+                            return parts.map((part, i) => {
+                              if (sortedWords.includes(part.toLowerCase())) {
+                                return <mark key={i} className="bg-yellow-300 text-black px-1 rounded shadow-sm font-bold">{part}</mark>;
+                              }
+                              return part;
+                            });
+                          };
+                          
+                          return (
+                            <div key={page.id} id={`page=${page.page_number}`} className="scroll-mt-10">
+                              <h3 className="text-lg font-bold text-slate-800 mb-4 border-b border-slate-200 pb-2">Page {page.page_number}</h3>
+                              <div className="prose prose-slate prose-sm max-w-none whitespace-pre-wrap font-mono text-xs text-slate-600 bg-slate-50 p-4 rounded-lg border border-slate-100">
+                                {renderHighlightedText(text)}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   ) : (
                     <div className="flex items-center justify-center w-full h-full text-slate-400 flex-col gap-3">
                       {loading ? (

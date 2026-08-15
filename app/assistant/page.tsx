@@ -64,7 +64,13 @@ function AssistantContent() {
             })));
           }
         })
-        .catch(console.error)
+        .catch((err) => {
+          console.error(err);
+          // If conversation is not found (e.g., deleted), clear the URL param
+          if (err.status === 404) {
+            router.replace("/assistant");
+          }
+        })
         .finally(() => {
           setLoading(false);
           setIsLoaded(true);
@@ -268,7 +274,7 @@ function AssistantContent() {
                               {message.citations.map((cit, idx) => (
                                 <Link 
                                   key={idx}
-                                  href={`/documents/${cit.document_id}`}
+                                  href={`/documents/${cit.document_id}#page=${cit.page_start}&search=${encodeURIComponent((cit.excerpt.length > 50 ? cit.excerpt.substring(Math.floor(cit.excerpt.length/2) - 25, Math.floor(cit.excerpt.length/2) + 25) : cit.excerpt).replace(/\n/g, ' ').trim())}&words=${encodeURIComponent(message.content.replace(/\n/g, ' ').trim())}`}
                                   className="group flex flex-col p-4 rounded-xl border border-slate-200 bg-white hover:border-camrail-red hover:shadow-sm transition-all w-64"
                                 >
                                   <div className="mb-1">
