@@ -210,10 +210,10 @@ function AssistantContent() {
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl w-full">
                 {[
-                  "Quelle est la procédure pour la maintenance préventive ?",
-                  "Quelles sont les règles de sécurité en atelier ?",
-                  "Comment fonctionne le freinage sur les locomotives ?",
-                  "Quels sont les EPI obligatoires ?"
+                  "En quoi consiste la maintenance préventive selon les procédures ?",
+                  "Quel est le rôle principal de la signalisation ferroviaire ?",
+                  "À quelle vitesse un train est-il qualifié de grande vitesse ?",
+                  "Quel est le rôle de l'EPSF en matière de sécurité ?"
                 ].map((suggestion, i) => (
                   <button
                     key={i}
